@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="mongodb.driver.sync" type="repository">
+    <properties maven-id="org.mongodb:mongodb-driver-sync:4.11.1" />
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/mongodb/mongodb-driver-sync/4.11.1/mongodb-driver-sync-4.11.1.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/org/mongodb/bson/4.11.1/bson-4.11.1.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/org/mongodb/mongodb-driver-core/4.11.1/mongodb-driver-core-4.11.1.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/org/mongodb/bson-record-codec/4.11.1/bson-record-codec-4.11.1.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
