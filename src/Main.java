@@ -1,4 +1,6 @@
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.client.*;
@@ -10,6 +12,7 @@ import com.sun.net.httpserver.*;
 
 import java.io.*;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -31,10 +34,15 @@ public class Main {
     private static final MongoDatabase mongoDatabase = mongoClient.getDatabase(MONGO_DATABASE);
 
     public static MongoClient createConnection() {
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        Logger rootLogger = loggerContext.getLogger("org.mongodb.driver");
+        ((ch.qos.logback.classic.Logger) rootLogger).setLevel(Level.OFF);
+
         String connectionString = "mongodb://localhost:27017"; // Modify as needed
 
         MongoClientSettings settings = MongoClientSettings.builder()
                 .applyConnectionString(new ConnectionString(connectionString))
+
                 .build();
 
         return MongoClients.create(settings);
@@ -47,8 +55,8 @@ public class Main {
 
         server.start();
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-        scheduler.scheduleAtFixedRate(Main::monitorPerformance, 0, 5, TimeUnit.SECONDS);
+//        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+//        scheduler.scheduleAtFixedRate(Main::monitorPerformance, 0, 5, TimeUnit.SECONDS);
     }
 
 
@@ -137,10 +145,23 @@ public class Main {
                 InputStream requestBody = exchange.getRequestBody();
                 InputStreamReader isr = new InputStreamReader(requestBody);
                 BufferedReader br = new BufferedReader(isr);
-                String jsonInput = br.readLine();
+                // Read the entire JSON input
+                StringBuilder jsonInputBuilder = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    jsonInputBuilder.append(line);
+                }
+                String jsonInput = jsonInputBuilder.toString();
 
+                // Trim the JSON input to remove extra characters
+                jsonInput = jsonInput.trim();
+
+                // Parse the JSON input into a Document
                 Document document = Document.parse(jsonInput);
+
+                // Insert the document into the collection
                 mongoDatabase.getCollection(MONGO_COLLECTION).insertOne(document);
+
 
                 sendResponse(exchange, 200, "POST request handled");
             } catch (Exception e) {
@@ -149,16 +170,23 @@ public class Main {
             }
         }
 
+
         private void handlePutRequest(HttpExchange exchange) throws IOException {
             try {
-                InputStream requestBody = exchange.getRequestBody();
-                InputStreamReader isr = new InputStreamReader(requestBody);
-                BufferedReader br = new BufferedReader(isr);
-                String jsonInput = br.readLine();
+                // Read the entire JSON input
+                String jsonInput = readJsonInput(exchange);
 
+                // Parse the JSON input into a Document
                 Document updatedDocument = Document.parse(jsonInput);
+
+                // Extract the "year" field from the updatedDocument
                 int yearToUpdate = updatedDocument.getInteger("year");
-                mongoDatabase.getCollection(MONGO_COLLECTION).replaceOne(new Document("year", yearToUpdate), updatedDocument);
+
+                // Create a query Document based on the extracted "year" value
+                Document queryDocument = new Document("year", yearToUpdate);
+
+                // Replace the document based on the query
+                mongoDatabase.getCollection(MONGO_COLLECTION).replaceOne(queryDocument, updatedDocument);
 
                 sendResponse(exchange, 200, "PUT request handled");
             } catch (Exception e) {
@@ -167,30 +195,86 @@ public class Main {
             }
         }
 
+        private String readJsonInput(HttpExchange exchange) throws IOException {
+            // Read the entire JSON input
+            try (InputStream requestBody = exchange.getRequestBody();
+                 InputStreamReader isr = new InputStreamReader(requestBody);
+                 BufferedReader br = new BufferedReader(isr)) {
+
+                StringBuilder jsonInputBuilder = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    jsonInputBuilder.append(line);
+                }
+                return jsonInputBuilder.toString().trim();
+            }
+        }
+
+
         private void handleDeleteRequest(HttpExchange exchange) throws IOException {
             try {
                 InputStream requestBody = exchange.getRequestBody();
                 InputStreamReader isr = new InputStreamReader(requestBody);
                 BufferedReader br = new BufferedReader(isr);
-                String jsonInput = br.readLine();
+                // Read the entire JSON input
+                StringBuilder jsonInputBuilder = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    jsonInputBuilder.append(line);
+                }
+                String jsonInput = jsonInputBuilder.toString();
 
-                Document documentToDelete = Document.parse(jsonInput);
-                mongoDatabase.getCollection(MONGO_COLLECTION).deleteOne(documentToDelete);
+                // Trim the JSON input to remove extra characters
+                jsonInput = jsonInput.trim();
+
+                // Parse the JSON input into a Document
+                Document document = Document.parse(jsonInput);
+
+                // Extract the "year" field from the Document
+                int yearToDelete = document.getInteger("year");
+
+                // Create a query Document based on the extracted "year" value
+                Document queryDocument = new Document("year", yearToDelete);
+
+                // Delete the document based on the query
+                mongoDatabase.getCollection(MONGO_COLLECTION).deleteOne(queryDocument);
 
                 sendResponse(exchange, 200, "DELETE request handled");
+
             } catch (Exception e) {
                 e.printStackTrace();
                 sendResponse(exchange, 500, "Internal Server Error");
             }
         }
 
-        private void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
-            Headers headers = exchange.getResponseHeaders();
-            headers.set("Content-Type", "application/json"); // Adjust content type as needed
-            exchange.sendResponseHeaders(statusCode, response.length());
-            OutputStream os = exchange.getResponseBody();
-            os.write(response.getBytes());
-            os.close();
+
+        private void sendResponse(HttpExchange exchange, int statusCode, String response) {
+            try {
+                Headers headers = exchange.getResponseHeaders();
+                headers.set("Content-Type", "application/json"); // Adjust content type as needed
+
+                // Convert the response string to bytes using UTF-8 encoding
+                byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+
+                // Send the response headers
+                exchange.sendResponseHeaders(statusCode, responseBytes.length);
+
+                // Get the response body stream
+                OutputStream os = exchange.getResponseBody();
+
+                // Write the response bytes to the stream
+                os.write(responseBytes);
+
+                // Ensure that the response body is fully written before closing the stream
+                os.flush();
+
+                // Close the response body stream
+                os.close();
+            } catch (IOException e) {
+                // Log the exception or handle it appropriately
+                e.printStackTrace();
+            }
         }
+
     }
 }
